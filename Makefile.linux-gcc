@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: MIT
+#
+# Copyright (c) 2019 Toshiba Corporation
+
+# make switches
+# TESTLIB: If yes, this makes library suited for test which outputs logs to stdout
+# M64: If yes, this makes 64bit library and test program. if not yes, 32bit.
+# DESTDIR: output directory
+
+TESTLIB=no
+M64=yes
+DESTDIR=./build
+
+# compiler and archiver
+
+CC=gcc
+AR=ar
+
+# compiler and linker options depends on library, test library and test program
+
+CFLAGS_LIB=-O3 -Werror -Wall -Wextra -g -fPIC -DNDEBUG -DPSM_LIBRARY_BUILD
+LDFLAGS_LIB=-lpthread
+
+CFLAGS_TEST=-O3 -Werror -Wall -Wextra -g -fPIC -DNDEBUG
+LDFLAGS_TEST=$(LDFLAGS_LIB) -ldl -rdynamic -lpsm$(MTSFX)
+
+CFLAGS_TESTLIB=-DUSE_TEST_HOOK=1 -DTESTLOG -DEBUG -UNDEBUG
+LDFLAGS_TESTLIB=
+
+ifeq ($(M64),yes)
+MSFX=
+MFLAG=-m64
+else
+MSFX=32
+MFLAG=-m32
+endif
+
+ifeq ($(TESTLIB),yes)
+TSFX=_mod
+CFLAGS_LIB+=$(CFLAGS_TESTLIB)
+LDFLAGS_LIB+=$(LDFLAGS_TESTLIB)
+else
+TSFX=
+endif
+
+CFLAGS_LIB+=$(MFLAG)
+LDFLAGS_LIB+=$(MFLAG)
+CFLAGS_TEST+=$(MFLAG)
+LDFLAGS_TEST+=$(MFLAG)
+CFLAGS_TESTLIB+=$(MFLAG)
+LDFLAGS_TESTLIB+=$(MFLAG)
+
+# file naming rules for test library and 32/64bit
+# "32" suffix stands for 32bit program
+# "_mod" suffix stands for program enabled test functions
+
+MTSFX=$(MSFX)$(TSFX)
+
+PSM_OBJS=$(DESTDIR)/psm$(MTSFX).o $(DESTDIR)/psm_linux$(MTSFX).o $(DESTDIR)/psm_dlmalloc$(MTSFX).o
+PSM_SOLIB=$(DESTDIR)/libpsm$(MTSFX).so
+PSM_TEST=$(DESTDIR)/psm_test$(MTSFX)
+
+TARGET=$(PSM_SOLIB) $(PSM_TEST)
+
+all: $(DESTDIR) $(TARGET)
+
+$(DESTDIR):
+	mkdir -p $(DESTDIR)
+
+$(PSM_SOLIB): $(PSM_OBJS)
+	$(CC) -shared $(PSM_OBJS) -o $(PSM_SOLIB) $(LDFLAGS_TESTLIB)
+
+$(PSM_TEST): $(PSM_SOLIB) $(DESTDIR)/psm_test$(MTSFX).o
+	$(CC) -o $(PSM_TEST) $(DESTDIR)/psm_test$(MTSFX).o -L$(DESTDIR) $(LDFLAGS_TEST) -Wl,-rpath=.
+
+$(DESTDIR)/psm$(MTSFX).o: psm.c psm.h
+	$(CC) $(CFLAGS_LIB) -o $(DESTDIR)/psm$(MTSFX).o -c psm.c
+
+$(DESTDIR)/psm_dlmalloc$(MTSFX).o: psm_dlmalloc.c psm_dlmalloc.h
+	$(CC) $(CFLAGS_LIB) -o $(DESTDIR)/psm_dlmalloc$(MTSFX).o -c psm_dlmalloc.c
+
+$(DESTDIR)/psm_linux$(MTSFX).o: psm_linux.c psm_linux.h
+	$(CC) $(CFLAGS_LIB) -o $(DESTDIR)/psm_linux$(MTSFX).o -c psm_linux.c
+
+$(DESTDIR)/psm_test$(MTSFX).o: psm_test.c
+	$(CC) $(CFLAGS_TEST) -o $(DESTDIR)/psm_test$(MTSFX).o -c psm_test.c
+
+clean:
+	rm -rf $(TARGET) $(DESTDIR)/*.o *~
+
+.PHONY: all clean

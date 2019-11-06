@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: MIT
+#
+# Copyright (c) 2019 Toshiba Corporation
+
+# make switches
+# TESTLIB: If yes, this makes library suited for test which outputs logs to stdout
+# M64: If yes, this makes 64bit library and test program. if not yes, 32bit.
+#      Please use the appropriate VS's command prompt (vcvarsXXX.bat).
+# DESTDIR: output directory
+
+TESTLIB=no
+M64=yes
+DESTDIR=.\
+
+# compiler and archiver
+
+CC=cl.exe
+LD=link.exe
+
+# compiler and linker options depends on library, test library and test program
+
+!IF "$(TESTLIB)"=="yes"
+BUILDMODE=Debug
+!ELSE
+BUILDMODE=Release
+!ENDIF
+
+!IF "$(M64)"=="yes"
+MCFLAG=
+MLDFLAG=/MACHINE:X64
+PFTGT=x64
+!ELSE
+MCFLAG=/D WIN32 /Oy-
+MLDFLAG=/MACHINE:X86
+PFTGT=x86
+!ENDIF
+
+CFLAGS_CMN=/nologo /W3 /WX- /diagnostics:classic /sdl /D _CONSOLE /D _WINDLL /D _CONSOLE /D _UNICODE /D UNICODE /Gm- /EHsc /GS
+CFLAGS_CMN=$(CFLAGS_CMN) /fp:precise /permissive- /Zc:wchar_t /Zc:forScope /Zc:inline
+CFLAGS_CMN=$(CFLAGS_CMN) /Fd$*.pdb /Gd /TC /FC
+LDFLAGS_LIB=/INCREMENTAL /NOLOGO /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:$*.pdb /SUBSYSTEM:CONSOLE
+LDFLAGS_LIB=$(LDFLAGS_LIB) /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:$*.lib
+LDFLAGS_LIB=$(LDFLAGS_LIB) KERNEL32.LIB USER32.LIB GDI32.LIB WINSPOOL.LIB COMDLG32.LIB ADVAPI32.LIB SHELL32.LIB OLE32.LIB OLEAUT32.LIB UUID.LIB ODBC32.LIB ODBCCP32.LIB
+
+CFLAGS_OPTLIB=/Zi /O2 /Oi /MD /GL /D NDEBUG /MD /Gy
+LDFLAGS_OPTLIB=/DEBUG /OPT:REF /OPT:ICF /LTCG:incremental /ignore:4075
+
+CFLAGS_TESTLIB=/ZI /JMC /Od /RTC1 /MDd /D _DEBUG /D USE_TEST_HOOK=1 /D TESTLOG /D DEBUG
+LDFLAGS_TESTLIB=/DEBUG:FASTLINK
+
+!IF "$(TESTLIB)"=="yes"
+TSFX=_mod
+CFLAGS_CMN=$(CFLAGS_CMN) $(CFLAGS_TESTLIB) $(MCFLAG)
+LDFLAGS_LIB=$(LDFLAGS_LIB) $(LDFLAGS_TESTLIB) $(MLDFLAG)
+!ELSE
+TSFX=
+CFLAGS_CMN=$(CFLAGS_CMN) $(CFLAGS_OPTLIB) $(MCFLAG)
+LDFLAGS_LIB=$(LDFLAGS_LIB) $(LDFLAGS_OPTLIB) $(MLDFLAG)
+!ENDIF
+
+CFLAGS_LIB=$(CFLAGS_CMN) /D PSM_LIBRARY_BUILD
+
+CFLAGS_TEST=$(CFLAGS_CMN)
+LDFLAGS_TEST=$(LDFLAGS_LIB)
+
+TARGET=$(PSM_LIB) $(PSM_TEST)
+BINDIR=$(DESTDIR)\bin\$(PFTGT)\$(BUILDMODE)
+
+PSM_OBJS=$(BINDIR)\psm.obj $(BINDIR)\psm_win.obj $(BINDIR)\psm_dlmalloc.obj
+PSM_LIB=$(BINDIR)\psm_library.dll
+PSM_TEST=$(BINDIR)\psm_test.exe
+
+all: $(BINDIR) $(TARGET)
+
+$(BINDIR):
+	-mkdir $(BINDIR) 2>NUL
+
+$(PSM_LIB): $(PSM_OBJS)
+	$(LD) /OUT:$(PSM_LIB) /DLL $(PSM_OBJS) $(LDFLAGS_LIB)
+
+$(PSM_TEST): $(PSM_LIB) $(BINDIR)\psm_test.obj
+	$(LD) /OUT:$(PSM_TEST) $(BINDIR)\psm_test.obj $(BINDIR)\psm_library.lib $(LDFLAGS_TEST)
+
+$(BINDIR)\psm.obj: psm.c psm.h
+	$(CC) $(CFLAGS_LIB) /Fo$(BINDIR)\psm.obj -c psm.c
+
+$(BINDIR)\psm_dlmalloc.obj: psm_dlmalloc.c psm_dlmalloc.h
+	$(CC) $(CFLAGS_LIB) /Fo$(BINDIR)\psm_dlmalloc.obj -c psm_dlmalloc.c
+
+$(BINDIR)\psm_win.obj: psm_win.c psm_win.h
+	$(CC) $(CFLAGS_LIB) /Fo$(BINDIR)\psm_win.obj -c psm_win.c
+
+$(BINDIR)\psm_test.obj: psm_test.c
+	$(CC) $(CFLAGS_TEST) /Fo$(BINDIR)\psm_test.obj -c psm_test.c
+
+clean:
+	-del /Q $(TARGET) 2>NUL
+	-del /Q $(BINDIR)/*.obj 2>NUL
+
+.PHONY: all clean

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)$(PlatformTarget)\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)$(PlatformTarget)\$(Configuration)\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <PreLinkEvent>
+      <Command>md $(SolutionDir)bin\$(PlatformTarget)\$(Configuration)\ &gt; NUL 2&gt;&amp;1
+if ERRORLEVEL 1 cmd /c exit 0</Command>
+    </PreLinkEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup>
+    <PreLinkEvent>
+      <Message>共通フォルダの作成</Message>
+    </PreLinkEvent>
+    <Link>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/OUT:$(SolutionDir)bin\$(PlatformTarget)\$(Configuration)\$(TargetName)$(TargetExt) %(AdditionalOptions)</AdditionalOptions>
+      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+    </Link>
+    <PostBuildEvent>
+      <Command>copy /Y $(OutDir)$(TargetName).lib $(SolutionDir)bin\$(PlatformTarget)\$(Configuration)\</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>共通フォルダの更新</Message>
+    </PostBuildEvent>
+    <Lib>
+      <LinkTimeCodeGeneration>false</LinkTimeCodeGeneration>
+    </Lib>
+    <ClCompile>
+      <PreprocessorDefinitions>PSM_LIBRARY_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup />
+</Project>
