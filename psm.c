@@ -442,9 +442,11 @@ PSM_EXPORT void PSMdeinit(const PSMHandle handle) {
   pMap = NULL;
 
 end_of_deinit:
-  if (is_locked) pf->unlockPSM(handle);
-  pf->closePSM(handle);
-  if (handle != NULL) free(handle);
+  if (handle != NULL) {
+    if (is_locked) pf->unlockPSM(handle);
+    pf->closePSM(handle);
+    free(handle);
+  }
 
   LOG("PSMdeinit end: handle %p\n", handle);
 }
