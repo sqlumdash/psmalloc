@@ -674,6 +674,12 @@ TEST_EXPORT int htrun(void)
   return 0;
 }
 
+TEST_EXPORT int null_deinit(void)
+{
+  PSMdeinit(0);
+  return 0;
+}
+
 int main(int argc, char *argv[])
 {
   if (argc == 1) {
