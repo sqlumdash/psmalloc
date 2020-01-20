@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <assert.h>
 
 #if defined(_WIN32) || defined(_WIN64)
 #define WINDOWS 1
@@ -272,6 +273,29 @@ TEST_EXPORT int init_twice(void)
   if (handle2 != NULL) {
     PSMdeinit(handle2);
   }
+
+  return 0;
+}
+
+TEST_EXPORT int pshared_handle_test(void)
+{
+  PSMHandle handle1, handle2, handle3;
+  char *name ="test.psm";
+  size_t size = 1024*1024;
+
+  remove(name);
+  PSMinit(name, size, NULL, &handle1);
+  assert(handle1);
+  PSMinit(name, size, NULL, &handle2);
+  assert(handle2);
+
+  PSMdeinit(handle1);
+  PSMdeinit(handle2);
+
+  PSMinit(name, size, NULL, &handle3);
+  assert(handle3);
+
+  PSMdeinit(handle3);
 
   return 0;
 }

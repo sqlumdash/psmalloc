@@ -48,6 +48,7 @@
 typedef struct PSMRefTable {
   PSMProcess proc[PSM_PROCESS_MAX]; /* Process ID using this shared memory. */
   int32_t refcount[PSM_PROCESS_MAX]; /* Reference count of initialization for the process (-1 is deleted entry) */
+  PSMHandle pshared_handle[PSM_PROCESS_MAX]; /* Shared information on each processes. */
 } PSMRefTable;
 
 typedef struct PSMHeader {
@@ -79,6 +80,7 @@ typedef struct PSMPlatformFunctionsType {
   int (*getPSMFileSize)(PSMHandle h, size_t *size);
   int (*openPSM)(PSMHandle h, const char *name);
   void (*closePSM)(PSMHandle h);
+  void (*dupPSMHandle)(PSMHandle h, const PSMHandle rh);
   int (*mapPSM)(PSMHandle h, size_t maplen, void *pReqAddress);
   void (*unmapPSM)(PSMHandle h);
   /* string functions */

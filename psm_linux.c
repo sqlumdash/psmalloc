@@ -67,6 +67,14 @@ static void closePSM(PSMHandle h) {
   }
 }
 
+static void dupPSMHandle(PSMHandle h, PSMHandle rh) {
+  LOG("  dupPSMHandle\n");
+
+  int fd_tmp = h->fd;
+  memcpy(h, rh, sizeof(struct PSMHandleTag));
+  h->fd = fd_tmp;
+}
+
 static int mapPSM(PSMHandle h, size_t maplen, void *pReqAddress) {
   int ret = 0;
 
@@ -301,6 +309,7 @@ PSM_EXPORT PSMPlatformFunctionsType PSMPlatformFunctions = {
   getPSMFileSize,
   openPSM,
   closePSM,
+  dupPSMHandle,
   mapPSM,
   unmapPSM,
   copyString,
