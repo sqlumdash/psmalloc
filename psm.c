@@ -101,7 +101,7 @@ static PSMHandle addRefPSMHeader(void *pMap, PSMHandle handle) {
   LOG("addRefPSMHeader: Check entries %d\n", check_entries);
 
   for (i = 0; i < check_entries; i++) {
-    if (pf->isEqualProcess(pHeader->reftable.proc[i], proc)) {
+    if (pHeader->reftable.refcount[i] > 0 && pf->isEqualProcess(pHeader->reftable.proc[i], proc)) {
       LOG("addRefPSMHeader: Yet another init on the same shared memory and process pid(%d)\n", pf->getProcessID(&proc));
       pHeader->reftable.refcount[i]++;
       pshared_handle = pHeader->reftable.pshared_handle[i];

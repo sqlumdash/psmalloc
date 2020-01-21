@@ -280,7 +280,7 @@ TEST_EXPORT int init_twice(void)
 TEST_EXPORT int pshared_handle_test(void)
 {
   PSMHandle handle1, handle2, handle3;
-  char *name ="test.psm";
+  char *name = "test.psm";
   size_t size = 1024*1024;
 
   remove(name);
@@ -290,6 +290,32 @@ TEST_EXPORT int pshared_handle_test(void)
   assert(handle2);
 
   PSMdeinit(handle1);
+  PSMdeinit(handle2);
+
+  PSMinit(name, size, NULL, &handle3);
+  assert(handle3);
+
+  PSMdeinit(handle3);
+
+  return 0;
+}
+
+TEST_EXPORT int pshared_handle_test2(void)
+{
+  PSMHandle handle1, handle2, handle3;
+  char *name = "test.psm";
+  size_t size = 1024*1024;
+
+  remove(name);
+  PSMinit(name, size, NULL, &handle1);
+  assert(handle1);
+  PSMinit(name, size, NULL, &handle2);
+  assert(handle2);
+
+  PSMdeinit(handle1);
+  system("./psm_test_mod initwait &");
+  sleep(1);
+
   PSMdeinit(handle2);
 
   PSMinit(name, size, NULL, &handle3);
