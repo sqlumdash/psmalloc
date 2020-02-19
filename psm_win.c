@@ -62,8 +62,8 @@ static int openPSM(PSMHandle h, const char *name) {
   LOG("  openPSM\n", h, name);
 
   h->hFile = CreateFileA(name, GENERIC_READ | GENERIC_WRITE,
-    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-    NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_RANDOM_ACCESS | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+                         FILE_SHARE_READ | FILE_SHARE_WRITE,
+                         NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_RANDOM_ACCESS, NULL);
   if (h->hFile == INVALID_HANDLE_VALUE) ret = 1;
 
   LOG("  openPSM open handle %p\n", h->hFile);

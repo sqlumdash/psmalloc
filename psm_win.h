@@ -9,6 +9,7 @@
 #include <windows.h>
 
 #define PSM_FILEPATH_MAX (MAX_PATH)
+#define PSM_REMOVE_SHARED_FILE_POST_CLOSE
 
 typedef DWORD PSMProcess;
 

@@ -449,6 +449,7 @@ PSM_EXPORT void PSMdeinit(const PSMHandle handle) {
   void *pMap = NULL;
   int is_locked = 0;
   int ret = 0;
+  int last = 0;
   LOG("PSMdeinit: handle %p\n", handle);
 
   if (handle == NULL)
@@ -467,15 +468,19 @@ PSM_EXPORT void PSMdeinit(const PSMHandle handle) {
   if (!checkPSMHeader(pMap, 1)) goto end_of_deinit;
   refreshRefCountPSMHeader(pMap);
   pshared_handle = dropRefPSMHeader(pMap);
-  if (getRefCountPSMHeader(pMap) == 0) {
+  if (getRefCountPSMHeader(pMap) == 0)
+    last = 1;
+  if (last) {
     destroy_mspace(msp);
     pf->unmapPSM(handle);
     ret = pf->emptyPSMFile(handle);
     if (ret) goto end_of_deinit;
 
+#if !defined(PSM_REMOVE_SHARED_FILE_POST_CLOSE)
     ret = pf->removePSMFile(handle);
     if (ret) goto end_of_deinit;
     LOG("PSMdeinit: remove shared memory file (%s)\n", handle->name);
+#endif
   }
   if (!pshared_handle) pf->unmapPSM(handle);
   pMap = NULL;
@@ -484,6 +489,12 @@ end_of_deinit:
   if (handle != NULL) {
     if (is_locked) pf->unlockPSM(handle);
     pf->closePSM(handle);
+#if defined(PSM_REMOVE_SHARED_FILE_POST_CLOSE)
+    if (last) { 
+      ret = pf->removePSMFile(handle);
+      LOG("PSMdeinit: remove shared memory file (%s)\n", handle->name);
+    }
+#endif
     free(handle);
   }
 

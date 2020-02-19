@@ -9,6 +9,7 @@
 #include <sys/types.h>
 
 #define PSM_FILEPATH_MAX (4096)
+#undef PSM_REMOVE_SHARED_FILE_POST_CLOSE
 
 typedef pid_t PSMProcess;
 

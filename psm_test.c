@@ -87,12 +87,12 @@ TEST_EXPORT int simple(void)
   return 0;
 }
 
-TEST_EXPORT int simple20k(void)
+TEST_EXPORT int simple30k(void)
 {
   int err = 0;
   PSMHandle handle;
 
-  PSMinit("test.psm", 20*1024, 0, &handle);
+  PSMinit("test.psm", 30*1024, 0, &handle);
   if (handle != NULL) {
     void *pAddress = PSMalloc(handle, 1024);
     err = PSMgetError(handle);
@@ -341,6 +341,30 @@ TEST_EXPORT int init_three(void)
   }
   if (handle2 != NULL) {
     PSMdeinit(handle2);
+  }
+  if (handle3 != NULL) {
+    PSMdeinit(handle3);
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int init_three2(void)
+{
+  size_t siz = 1024 * 1024;
+  PSMHandle handle1, handle2, handle3;
+
+  PSMinit("test1.psm", siz, 0, &handle1);
+  printf("test1.psm %p\n", handle1);
+  PSMinit("test1.psm", siz, 0, &handle2);
+  printf("test1.psm %p\n", handle2);
+  if (handle2 != NULL) {
+    PSMdeinit(handle2);
+  }
+  PSMinit("test1.psm", siz, 0, &handle3);
+  printf("test1.psm %p\n", handle3);
+  if (handle1 != NULL) {
+    PSMdeinit(handle1);
   }
   if (handle3 != NULL) {
     PSMdeinit(handle3);
