@@ -72,7 +72,8 @@ static uint32_t getRefCountPSMHeader(void *pMap) {
   return pHeader->refcount;
 }
 
-static int addRefPSMHeader(void *pMap) {
+static PSMHandle addRefPSMHeader(void *pMap, PSMHandle handle) {
+  PSMHandle pshared_handle = NULL;
   PSMHeader *pHeader = pMap;
   int i;
   int check_entries;
@@ -100,9 +101,10 @@ static int addRefPSMHeader(void *pMap) {
   LOG("addRefPSMHeader: Check entries %d\n", check_entries);
 
   for (i = 0; i < check_entries; i++) {
-    if (pf->isEqualProcess(pHeader->reftable.proc[i], proc)) {
+    if (pHeader->reftable.refcount[i] > 0 && pf->isEqualProcess(pHeader->reftable.proc[i], proc)) {
       LOG("addRefPSMHeader: Yet another init on the same shared memory and process pid(%d)\n", pf->getProcessID(&proc));
       pHeader->reftable.refcount[i]++;
+      pshared_handle = pHeader->reftable.pshared_handle[i];
       break;
     }
   }
@@ -110,7 +112,13 @@ static int addRefPSMHeader(void *pMap) {
   if (i == check_entries) {
     if (inactive_first == -1 && check_entries >= PSM_PROCESS_MAX) {
       LOG("addRefPSMHeader: Reached the max processes PSM_PROCESS_MAX(%d)\n", PSM_PROCESS_MAX);
-      return 0;
+      return NULL;
+    }
+
+    pshared_handle = malloc(sizeof(struct PSMHandleTag));
+    if (pshared_handle == NULL) {
+      LOG("addRefPSMHeader: Cannot allocate process shared handle\n");
+      return NULL;
     }
 
     if (inactive_first != -1) {
@@ -120,16 +128,21 @@ static int addRefPSMHeader(void *pMap) {
     LOG("addRefPSMHeader: New init on the process pid (%d) for the shared memory at index %d\n", pf->getProcessID(&proc), i);
     memcpy(&pHeader->reftable.proc[i], &proc, sizeof(PSMProcess));
     pHeader->reftable.refcount[i] = 1;
+    pHeader->reftable.pshared_handle[i] = pshared_handle;
+    memcpy(pshared_handle, handle, sizeof(struct PSMHandleTag));
+    LOG("addRefPSMHeader: Shared PSMHandle is at %p\n", pshared_handle);
   }
   
   pHeader->refcount++;
-  return 1;
+  LOG("addRefPSMHeader: current refcount %p\n", pHeader->refcount);
+  return pshared_handle;
 }
 
-static int dropRefPSMHeader(void *pMap) {
+static PSMHandle dropRefPSMHeader(void *pMap) {
   PSMHeader *pHeader = pMap;
   int i, check_processes;
   PSMProcess proc;
+  PSMHandle pshared_handle = NULL;
 
   pf->getCurrentProcess(&proc);
   LOG("current process pid %d\n", pf->getProcessID(&proc));
@@ -146,6 +159,7 @@ static int dropRefPSMHeader(void *pMap) {
 
   for (i = 0; i < check_processes; i++) {
     if (pf->isEqualProcess(pHeader->reftable.proc[i], proc)) {
+      pshared_handle = pHeader->reftable.pshared_handle[i];
       pHeader->reftable.refcount[i]--;
       LOG("dropRefPSMHeader: Drop reference at index %d, process %d, refcount %d\n",
               i, pf->getProcessID(&proc), pHeader->reftable.refcount[i]);
@@ -154,6 +168,12 @@ static int dropRefPSMHeader(void *pMap) {
         /* Mark as inactive entry */
         pHeader->reftable.refcount[i] = PSM_REFCOUNT_INACTIVE;
         LOG("dropRefPSMHeader: Mark as inactive at index %d\n", i);
+        if (pshared_handle) {
+          free(pshared_handle);
+          LOG("dropRefPSMHeader: Free shared PSMHandle\n");
+        }
+        pshared_handle = NULL;
+        pHeader->reftable.pshared_handle[i] = pshared_handle;
       }
       break;
     }
@@ -161,20 +181,25 @@ static int dropRefPSMHeader(void *pMap) {
 
   if (i == check_processes) {
     LOG("dropRefPSMHeader: Called by unused process %d\n", pf->getProcessID(&proc));
-    return 0;
+    return pshared_handle;
   }
 
   pHeader->refcount--;
-  return 1;
+  return pshared_handle;
 }
 
-static void refreshRefCountPSMHeader(void *pMap) {
+static PSMHandle refreshRefCountPSMHeader(void *pMap) {
   PSMHeader *pHeader = pMap;
   int i;
   PSMProcess proc;
+  PSMProcess current_proc;
   uint32_t sum_refcount = 0;
   int32_t refcount = 0;
   int ret;
+  PSMHandle pshared_handle = NULL;
+
+  pf->getCurrentProcess(&current_proc);
+  LOG("current process pid %d\n", pf->getProcessID(&current_proc));
 
   for (i = 0; i < pHeader->process_max; i++) {
     refcount = pHeader->reftable.refcount[i];
@@ -189,6 +214,8 @@ static void refreshRefCountPSMHeader(void *pMap) {
       if (ret == 1) {
         /* the process exists */
         sum_refcount += refcount;
+        if (pf->isEqualProcess(current_proc, proc))
+          pshared_handle = pHeader->reftable.pshared_handle[i];
       } else {
         /* the process does not exist */
         pHeader->reftable.refcount[i] = PSM_REFCOUNT_INACTIVE;
@@ -203,6 +230,8 @@ static void refreshRefCountPSMHeader(void *pMap) {
   } else {
     LOG("refreshRefCountPSMHeader: All good: current refcount = %d\n", sum_refcount);
   }
+
+  return pshared_handle;
 }
 
 #ifdef ENABLE_PSM_AUTO_ADDRESS
@@ -287,6 +316,7 @@ PSM_EXPORT void PSMinit(const char *name, const size_t initSize, void *pReqAddre
   size_t fileSize = 0;
   PSMHandle handle = NULL;
   mspace msp = NULL;
+  PSMHandle pshared_handle = NULL;
 
   *pHandle = NULL;
 
@@ -320,7 +350,7 @@ PSM_EXPORT void PSMinit(const char *name, const size_t initSize, void *pReqAddre
     if (fileSize >= PSM_PSMHEADER_SIZE) {
       /* Maybe active shared memory with different initSize so need to check header. */
       if (pf->mapPSM(handle, fileSize, NULL)) goto end_of_init;
-      refreshRefCountPSMHeader(handle->pMap);
+      pshared_handle = refreshRefCountPSMHeader(handle->pMap);
       refcount = getRefCountPSMHeader(handle->pMap);
       pf->unmapPSM(handle);
     } else {
@@ -371,18 +401,26 @@ PSM_EXPORT void PSMinit(const char *name, const size_t initSize, void *pReqAddre
           LOG("PSMinit: mapped address %p\n", handle->pMap);
           LOG("PSMinit: expected address %p\n", pReqAddress);
           pf->unmapPSM(handle);
-          if (pf->mapPSM(handle, initSize, pReqAddress)) goto end_of_init;
+          if (pshared_handle) {
+            pf->dupPSMHandle(handle, pshared_handle);
+          } else {
+            if (pf->mapPSM(handle, initSize, pReqAddress)) goto end_of_init;
+          }
         }
         if (!checkPSMHeader(handle->pMap, 1)) goto end_of_init;
       }
-      msp = attach_mspace((char*)handle->pMap + PSM_PSMHEADER_SIZE, handle->name);
+      if (pshared_handle) {
+        msp = handle->pAllocator;
+      } else {
+        msp = attach_mspace((char*)handle->pMap + PSM_PSMHEADER_SIZE, handle->name);
+      }
     }
 
     if (msp == NULL) goto end_of_init;
 
     handle->pAllocator = msp;
     
-    if (!addRefPSMHeader(handle->pMap)) {
+    if (!addRefPSMHeader(handle->pMap, handle)) {
       goto end_of_init;
     }
   }
@@ -406,10 +444,12 @@ end_of_init:
 PSM_EXPORT void PSMdeinit(const PSMHandle handle) {
   LOG("PSMdeinit begin: handle %p\n", handle);
 
+  PSMHandle pshared_handle = NULL;
   mspace msp = NULL;
   void *pMap = NULL;
   int is_locked = 0;
   int ret = 0;
+  int last = 0;
   LOG("PSMdeinit: handle %p\n", handle);
 
   if (handle == NULL)
@@ -427,24 +467,34 @@ PSM_EXPORT void PSMdeinit(const PSMHandle handle) {
 
   if (!checkPSMHeader(pMap, 1)) goto end_of_deinit;
   refreshRefCountPSMHeader(pMap);
-  dropRefPSMHeader(pMap);
-  if (getRefCountPSMHeader(pMap) == 0) {
+  pshared_handle = dropRefPSMHeader(pMap);
+  if (getRefCountPSMHeader(pMap) == 0)
+    last = 1;
+  if (last) {
     destroy_mspace(msp);
     pf->unmapPSM(handle);
     ret = pf->emptyPSMFile(handle);
     if (ret) goto end_of_deinit;
 
+#if !defined(PSM_REMOVE_SHARED_FILE_POST_CLOSE)
     ret = pf->removePSMFile(handle);
     if (ret) goto end_of_deinit;
     LOG("PSMdeinit: remove shared memory file (%s)\n", handle->name);
+#endif
   }
-  pf->unmapPSM(handle);
+  if (!pshared_handle) pf->unmapPSM(handle);
   pMap = NULL;
 
 end_of_deinit:
   if (handle != NULL) {
     if (is_locked) pf->unlockPSM(handle);
     pf->closePSM(handle);
+#if defined(PSM_REMOVE_SHARED_FILE_POST_CLOSE)
+    if (last) { 
+      ret = pf->removePSMFile(handle);
+      LOG("PSMdeinit: remove shared memory file (%s)\n", handle->name);
+    }
+#endif
     free(handle);
   }
 

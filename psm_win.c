@@ -62,8 +62,8 @@ static int openPSM(PSMHandle h, const char *name) {
   LOG("  openPSM\n", h, name);
 
   h->hFile = CreateFileA(name, GENERIC_READ | GENERIC_WRITE,
-    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-    NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_RANDOM_ACCESS, NULL);
+                         FILE_SHARE_READ | FILE_SHARE_WRITE,
+                         NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_RANDOM_ACCESS, NULL);
   if (h->hFile == INVALID_HANDLE_VALUE) ret = 1;
 
   LOG("  openPSM open handle %p\n", h->hFile);
@@ -79,6 +79,14 @@ static void closePSM(PSMHandle h) {
     LOG("  closePSM CloseHandle %p\n", h->hFile);
     CloseHandle(h->hFile);
   }
+}
+
+static void dupPSMHandle(PSMHandle h, PSMHandle rh) {
+  LOG("  dupPSMHandle\n");
+
+  HANDLE hFile_tmp = h->hFile;
+  memcpy(h, rh, sizeof(struct PSMHandleTag));
+  h->hFile = hFile_tmp;
 }
 
 static int mapPSM(PSMHandle h, size_t maplen, void *pReqAddress) {
@@ -297,6 +305,7 @@ PSM_EXPORT PSMPlatformFunctionsType PSMPlatformFunctions = {
   getPSMFileSize,
   openPSM,
   closePSM,
+  dupPSMHandle,
   mapPSM,
   unmapPSM,
   copyString,

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <assert.h>
 
 #if defined(_WIN32) || defined(_WIN64)
 #define WINDOWS 1
@@ -86,12 +87,12 @@ TEST_EXPORT int simple(void)
   return 0;
 }
 
-TEST_EXPORT int simple20k(void)
+TEST_EXPORT int simple30k(void)
 {
   int err = 0;
   PSMHandle handle;
 
-  PSMinit("test.psm", 20*1024, 0, &handle);
+  PSMinit("test.psm", 30*1024, 0, &handle);
   if (handle != NULL) {
     void *pAddress = PSMalloc(handle, 1024);
     err = PSMgetError(handle);
@@ -276,6 +277,55 @@ TEST_EXPORT int init_twice(void)
   return 0;
 }
 
+TEST_EXPORT int pshared_handle_test(void)
+{
+  PSMHandle handle1, handle2, handle3;
+  char *name = "test.psm";
+  size_t size = 1024*1024;
+
+  remove(name);
+  PSMinit(name, size, NULL, &handle1);
+  assert(handle1);
+  PSMinit(name, size, NULL, &handle2);
+  assert(handle2);
+
+  PSMdeinit(handle1);
+  PSMdeinit(handle2);
+
+  PSMinit(name, size, NULL, &handle3);
+  assert(handle3);
+
+  PSMdeinit(handle3);
+
+  return 0;
+}
+
+TEST_EXPORT int pshared_handle_test2(void)
+{
+  PSMHandle handle1, handle2, handle3;
+  char *name = "test.psm";
+  size_t size = 1024*1024;
+
+  remove(name);
+  PSMinit(name, size, NULL, &handle1);
+  assert(handle1);
+  PSMinit(name, size, NULL, &handle2);
+  assert(handle2);
+
+  PSMdeinit(handle1);
+  system("./psm_test_mod initwait &");
+  sleep(1);
+
+  PSMdeinit(handle2);
+
+  PSMinit(name, size, NULL, &handle3);
+  assert(handle3);
+
+  PSMdeinit(handle3);
+
+  return 0;
+}
+
 TEST_EXPORT int init_three(void)
 {
   PSMHandle handle1, handle2, handle3;
@@ -291,6 +341,30 @@ TEST_EXPORT int init_three(void)
   }
   if (handle2 != NULL) {
     PSMdeinit(handle2);
+  }
+  if (handle3 != NULL) {
+    PSMdeinit(handle3);
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int init_three2(void)
+{
+  size_t siz = 1024 * 1024;
+  PSMHandle handle1, handle2, handle3;
+
+  PSMinit("test1.psm", siz, 0, &handle1);
+  printf("test1.psm %p\n", handle1);
+  PSMinit("test1.psm", siz, 0, &handle2);
+  printf("test1.psm %p\n", handle2);
+  if (handle2 != NULL) {
+    PSMdeinit(handle2);
+  }
+  PSMinit("test1.psm", siz, 0, &handle3);
+  printf("test1.psm %p\n", handle3);
+  if (handle1 != NULL) {
+    PSMdeinit(handle1);
   }
   if (handle3 != NULL) {
     PSMdeinit(handle3);
