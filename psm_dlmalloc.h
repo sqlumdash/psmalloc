@@ -572,7 +572,12 @@ mspace create_mspace_with_base(void* base, size_t capacity, int locked, char* na
   attach_mspace returns existing space which is mapped in the base address.
 */
 mspace attach_mspace(void *base, char* name);
- 
+
+/*
+  detach_mspace frees allocated resources in process local.
+*/
+void detach_mspace(mspace msp);
+
 /*
   mspace_track_large_chunks controls whether requests for large chunks
   are allocated in their own untracked mmapped regions, separate from

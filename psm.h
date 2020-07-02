@@ -39,15 +39,24 @@
 
 #define PSM_PSMHEADER_SIZE (PSM_ALIGNMENT_SIZE(sizeof(PSMHeader), 4096))
 
-#define PSM_REFCOUNT_CLEAN    (0)
-#define PSM_REFCOUNT_INACTIVE (-1)
+#define PSM_REFCOUNT_CLEAN            (0)
+#define PSM_REFCOUNT_INACTIVE         (-1)
+#define PSM_REFCOUNT_INACTIVE_PENDING (-2)
+#define PSM_REFCOUNT_MAX       (INT16_MAX)
+#define PSM_TOTAL_REFCOUNT_MAX (UINT32_MAX)
 
 #define PSM_PSMHEADER_MAGIC (0x0141BEEF)
 #define PSM_USER_SIZE (8)
 
+typedef struct PSMRefTableNode {
+  PSMProcess proc;  /* Process ID using this shared memory. */
+  int16_t refcount; /* Reference count of initialization for the process (-1 is deleted entry) */
+  int16_t refcount_inherit; /* Reference count of prepared inheritabce. */
+} PSMRefTableNode;
+
 typedef struct PSMRefTable {
-  PSMProcess proc[PSM_PROCESS_MAX]; /* Process ID using this shared memory. */
-  int32_t refcount[PSM_PROCESS_MAX]; /* Reference count of initialization for the process (-1 is deleted entry) */
+  PSMRefTableNode node[PSM_PROCESS_MAX]; /* Reference node information */
+  /* Place 32bit/64bit dependent members below */
   PSMHandle pshared_handle[PSM_PROCESS_MAX]; /* Shared information on each processes. */
 } PSMRefTable;
 
@@ -56,16 +65,16 @@ typedef struct PSMHeader {
   char user_data[PSM_USER_SIZE]; /* Common user data area. */
   char user_padding[8]; /* Avoid damage from access violation. */
   uint32_t magic; /* Magic value for quick checking. */
-  uint32_t refcount; /* Reference count of initialization. */
+  uint32_t total_refcount; /* Reference total count of initialization. */
 
   /* Members of runtime checking */
   int32_t process_max; /* Value of PSM_PROCESS_MAX on the first init process. */
   uint32_t header_size; /* Size of PSMHeader */
   uint32_t ptr_size; /* Size of pointer */
+  uint32_t padding;  /* padding for 32bit/64bit compatibility */
 
   PSMRefTable reftable; /* Reference table of process ID and initialization count for each process */
 
-  /* Place pointers below */
   void *pReqAddress; /* Request map address */
 } PSMHeader;
 
@@ -100,6 +109,9 @@ extern PSM_EXPORT PSMPlatformFunctionsType PSMPlatformFunctions;
 
 PSM_EXPORT void PSMinit(const char *name, const size_t initSize, void *pReqAddress, PSMHandle* pHandle);
 PSM_EXPORT void PSMdeinit(const PSMHandle handle);
+PSM_EXPORT PSMHandle PSMprepareInherit(const PSMHandle handle);
+PSM_EXPORT PSMHandle PSMexecuteInherit(const PSMHandle handle);
+PSM_EXPORT void PSMcancelInherit(const PSMHandle handle);
 PSM_EXPORT void *PSMalloc(const PSMHandle handle, const size_t allocSize);
 PSM_EXPORT void PSMfree(const PSMHandle handle, void *pAddress);
 PSM_EXPORT int PSMgetError(const PSMHandle handle);

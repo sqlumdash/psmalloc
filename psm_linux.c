@@ -42,6 +42,7 @@ static void resetPSMHandle(PSMHandle h) {
   h->name[0] = '\0';
   h->pAllocator = NULL;
   h->length = 0;
+  h->proc = getpid();
 }
 
 static int openPSM(PSMHandle h, const char *name) {

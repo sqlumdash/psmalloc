@@ -19,6 +19,7 @@
 #else /* WINDOWS */
 #include <unistd.h>
 #include <dlfcn.h>
+#include <sys/wait.h>
 #endif /* WINDOWS */
 
 #include "psm.h"
@@ -204,13 +205,15 @@ TEST_EXPORT int toosmallalloc(void)
   PSMHandle handle;
   size_t siz;
 
-  for (siz = 64; siz < 1024 * 16; siz+=64) {
+  for (siz = 64; siz < 1024 * 32; siz+=64) {
     PSMinit("test.psm", siz, 0, &handle);
     printf("handle %p\n", handle);
     if (handle != NULL) {
       void *pAddress = PSMalloc(handle, 2);
       if (pAddress) {
         PSMfree(handle, pAddress);
+        PSMdeinit(handle);
+        return 0;
       } else {
         int err = 0;
         err = PSMgetError(handle);
@@ -560,6 +563,14 @@ TEST_EXPORT int initreqaddr(void)
   return 0;
 }
 
+TEST_EXPORT int inheritnullhandle(void)
+{
+  PSMprepareInherit(NULL);
+  PSMexecuteInherit(NULL);
+  PSMcancelInherit(NULL);
+  return 0;
+}
+
 TEST_EXPORT int initnullhandle(void)
 {
   PSMinit("test.psm", 1024*1024, 0, NULL);
@@ -748,11 +759,339 @@ TEST_EXPORT int htrun(void)
   return 0;
 }
 
-TEST_EXPORT int null_deinit(void)
+#if !WINDOWS
+TEST_EXPORT int forktest1()
 {
-  PSMdeinit(0);
+  /* inherit test before parent deinit  */
+  pid_t pid;
+  PSMHandle psmHandle = NULL;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  PSMprepareInherit(psmHandle);
+  if ((pid = fork()) == 0){
+    void *ptr;
+    printf("This is child process %d.\n", getpid());
+    if (!PSMexecuteInherit(psmHandle)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    ptr = PSMalloc(psmHandle, 1000);
+    PSMfree(psmHandle, ptr);
+    PSMgetError(psmHandle);
+    PSMgetUser(psmHandle);
+    PSMdeinit(psmHandle);
+  }else{
+    int status;
+    void *ptr;
+    sleep(1);
+    printf("This is parent process %d.\n", getpid());
+    ptr = PSMalloc(psmHandle, 1000);
+    PSMfree(psmHandle, ptr);
+    PSMgetError(psmHandle);
+    PSMgetUser(psmHandle);
+    PSMdeinit(psmHandle);
+    waitpid(pid, &status, WUNTRACED | WCONTINUED);
+  }
+
   return 0;
 }
+
+TEST_EXPORT int forktest2()
+{
+  /* inherit test after parent deinit  */
+  pid_t pid;
+  PSMHandle psmHandle = NULL;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  PSMprepareInherit(psmHandle);
+  if ((pid = fork()) == 0){
+    void *ptr;
+    printf("This is child process %d.\n", getpid());
+    sleep(1);
+    if (!PSMexecuteInherit(psmHandle)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    ptr = PSMalloc(psmHandle, 1000);
+    PSMfree(psmHandle, ptr);
+    PSMgetError(psmHandle);
+    PSMgetUser(psmHandle);
+    PSMdeinit(psmHandle);
+  }else{
+    int status;
+    printf("This is parent process %d.\n", getpid());
+    PSMdeinit(psmHandle);
+    waitpid(pid, &status, WUNTRACED | WCONTINUED);
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int forktest3()
+{
+  /* inherit test the case of immediate deinit after fork */
+  pid_t pid;
+  PSMHandle psmHandle = NULL;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  PSMprepareInherit(psmHandle);
+  if ((pid = fork()) == 0){
+    printf("This is child process %d.\n", getpid());
+    if (!PSMexecuteInherit(psmHandle)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    PSMdeinit(psmHandle);
+  }else{
+    int status;
+    printf("This is parent process %d.\n", getpid());
+    PSMdeinit(psmHandle);
+    waitpid(pid, &status, WUNTRACED | WCONTINUED);
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int forktest4()
+{
+  /* inherit test for multiple inherits */
+  pid_t pid, pid2;
+  PSMHandle psmHandle = NULL;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  PSMprepareInherit(psmHandle);
+  PSMprepareInherit(psmHandle);
+  if ((pid = fork()) == 0){
+    printf("This is child process %d.\n", getpid());
+    if (!PSMexecuteInherit(psmHandle)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    PSMprepareInherit(psmHandle);
+    if ((pid = fork()) == 0){
+      printf("This is grand child process %d.\n", getpid());
+      if (!PSMexecuteInherit(psmHandle)) {
+        printf("PSMexecuteInherit failed\n");
+        exit(1);
+      }
+      PSMdeinit(psmHandle);
+    } else {
+      int status;
+      printf("This is child process %d.\n", getpid());
+      PSMdeinit(psmHandle);
+      waitpid(pid, &status, WUNTRACED | WCONTINUED);
+    }
+  } else {
+    int status;
+    printf("This is parent process %d.\n", getpid());
+    if ((pid2 = fork()) == 0){
+      printf("This is child process %d.\n", getpid());
+      if (!PSMexecuteInherit(psmHandle)) {
+	printf("PSMexecuteInherit failed\n");
+	exit(1);
+      }
+      PSMdeinit(psmHandle);
+    } else {
+      PSMdeinit(psmHandle);
+      waitpid(pid2, &status, WUNTRACED | WCONTINUED);
+      waitpid(pid, &status, WUNTRACED | WCONTINUED);
+    }
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int forktest5()
+{
+  /* inherit test for simple cancel */
+  PSMHandle psmHandle = NULL;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  PSMprepareInherit(psmHandle);
+  PSMcancelInherit(psmHandle);
+  PSMdeinit(psmHandle);
+
+  return 0;
+}
+
+TEST_EXPORT int forktest6()
+{
+  /* inherit test case of cancel after fork (for fork error usecase) */
+  pid_t pid;
+  PSMHandle psmHandle = NULL;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  PSMprepareInherit(psmHandle);
+  if ((pid = fork()) == 0){
+    printf("This is child process %d.\n", getpid());
+    printf("This child have memory leaks, but please ignore.\n");
+    exit(0);
+  }else{
+    int status;
+    printf("This is parent process %d.\n", getpid());
+    PSMcancelInherit(psmHandle);
+    PSMdeinit(psmHandle);
+    waitpid(pid, &status, WUNTRACED | WCONTINUED);
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int forktest7()
+{
+  /* inherit test where memory is allocated and parent frees it. */
+  pid_t pid;
+  PSMHandle psmHandle = NULL;
+  void *ptr;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  ptr = PSMalloc(psmHandle, 1000);
+  PSMprepareInherit(psmHandle);
+  if ((pid = fork()) == 0){
+    printf("This is child process %d.\n", getpid());
+    if (!PSMexecuteInherit(psmHandle)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    ptr = PSMalloc(psmHandle, 1000);
+    PSMfree(psmHandle, ptr);
+    PSMgetError(psmHandle);
+    PSMgetUser(psmHandle);
+    PSMdeinit(psmHandle);
+  }else{
+    int status;
+    printf("This is parent process %d.\n", getpid());
+    PSMfree(psmHandle, ptr);
+    PSMgetError(psmHandle);
+    PSMgetUser(psmHandle);
+    PSMdeinit(psmHandle);
+    waitpid(pid, &status, WUNTRACED | WCONTINUED);
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int forktest8()
+{
+  /* inherit test where memory is allocated and child frees it. */
+  pid_t pid;
+  PSMHandle psmHandle = NULL;
+  void *ptr;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  ptr = PSMalloc(psmHandle, 1000);
+  PSMprepareInherit(psmHandle);
+  if ((pid = fork()) == 0){
+    printf("This is child process %d.\n", getpid());
+    if (!PSMexecuteInherit(psmHandle)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    PSMfree(psmHandle, ptr);
+    PSMgetError(psmHandle);
+    PSMgetUser(psmHandle);
+    PSMdeinit(psmHandle);
+  }else{
+    int status;
+    printf("This is parent process %d.\n", getpid());
+    ptr = PSMalloc(psmHandle, 1000);
+    PSMfree(psmHandle, ptr);
+    PSMgetError(psmHandle);
+    PSMgetUser(psmHandle);
+    PSMdeinit(psmHandle);
+    waitpid(pid, &status, WUNTRACED | WCONTINUED);
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int forktest9()
+{
+  /* inherit test using multile handle */
+  pid_t pid;
+  PSMHandle psmHandle = NULL;
+  PSMHandle psmHandle2 = NULL;
+  PSMHandle psmHandle3 = NULL;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle2);
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle3);
+  PSMprepareInherit(psmHandle);
+  PSMprepareInherit(psmHandle2);
+  PSMprepareInherit(psmHandle3);
+  if ((pid = fork()) == 0){
+    printf("This is child process %d.\n", getpid());
+    if (!PSMexecuteInherit(psmHandle2)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    if (!PSMexecuteInherit(psmHandle)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    if (!PSMexecuteInherit(psmHandle3)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    PSMdeinit(psmHandle3);
+    PSMdeinit(psmHandle);
+    PSMdeinit(psmHandle2);
+  }else{
+    int status;
+    printf("This is parent process %d.\n", getpid());
+    PSMdeinit(psmHandle);
+    PSMdeinit(psmHandle2);
+    PSMdeinit(psmHandle3);
+    waitpid(pid, &status, WUNTRACED | WCONTINUED);
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int forktest10()
+{
+  /* inherit test reinit the same memory before child inheritance */
+  pid_t pid;
+  PSMHandle psmHandle = NULL;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  PSMprepareInherit(psmHandle);
+  if ((pid = fork()) == 0){
+    printf("This is child process %d.\n", getpid());
+    sleep(1);
+    if (!PSMexecuteInherit(psmHandle)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    PSMdeinit(psmHandle);
+  }else{
+    int status;
+    printf("This is parent process %d.\n", getpid());
+    PSMdeinit(psmHandle);
+    PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+    PSMdeinit(psmHandle);
+    waitpid(pid, &status, WUNTRACED | WCONTINUED);
+  }
+
+  return 0;
+}
+
+TEST_EXPORT int forktest11()
+{
+  /* inherit test reinit the same memory during inheritance */
+  pid_t pid;
+  PSMHandle psmHandle = NULL;
+  PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+  PSMprepareInherit(psmHandle);
+  if ((pid = fork()) == 0){
+    printf("This is child process %d.\n", getpid());
+    if (!PSMexecuteInherit(psmHandle)) {
+      printf("PSMexecuteInherit failed\n");
+      exit(1);
+    }
+    PSMdeinit(psmHandle);
+  }else{
+    int status;
+    printf("This is parent process %d.\n", getpid());
+    PSMdeinit(psmHandle);
+    PSMinit("test_inherit.psm", 1024 * 1024, NULL, &psmHandle);
+    PSMdeinit(psmHandle);
+    waitpid(pid, &status, WUNTRACED | WCONTINUED);
+  }
+
+  return 0;
+}
+#endif /* !WINDOWS */
 
 int main(int argc, char *argv[])
 {
@@ -782,6 +1121,8 @@ int main(int argc, char *argv[])
   printf("start test %s\n", argv[1]);
   fptr();
   printf("end test %s\n", argv[1]);
+
+  dlclose(handle);
 
   return 0;
 }
