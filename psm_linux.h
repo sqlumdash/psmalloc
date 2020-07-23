@@ -13,13 +13,18 @@
 
 typedef pid_t PSMProcess;
 
-typedef struct PSMHandleTag {
+typedef struct PSMHandleTag *PSMHandle;
+
+struct PSMHandleTag {
   int fd;
   void *pMap;
   char name[PSM_FILEPATH_MAX];
   void *pAllocator;
   size_t length;
-} *PSMHandle;
+  PSMProcess proc;
+  PSMHandle pshared;
+  int pshared_refcount;
+};
 
 #define PSM_EXPORT
 

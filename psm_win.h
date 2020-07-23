@@ -13,14 +13,19 @@
 
 typedef DWORD PSMProcess;
 
-typedef struct PSMHandleTag {
+typedef struct PSMHandleTag *PSMHandle;
+
+struct PSMHandleTag {
   HANDLE hFile;
   HANDLE hMap;
   void *pMap;
   char name[PSM_FILEPATH_MAX];
   void *pAllocator;
   size_t length;
-} *PSMHandle;
+  PSMProcess proc;
+  PSMHandle pshared;
+  int pshared_refcount;
+};
 
 #if PSM_LIBRARY_BUILD
 #define PSM_EXPORT __declspec(dllexport)

@@ -5684,6 +5684,18 @@ int mspace_track_large_chunks(mspace msp, int enable) {
   return ret;
 }
 
+void detach_mspace(mspace msp) {
+  mstate_ext me = (mstate_ext)msp;
+  mstate ms = me->msp;
+  (void)ms;
+  if (ok_magic(ms)) {
+    free(msp);
+  }
+  else {
+    USAGE_ERROR_ACTION(ms,ms);
+  }
+}
+
 size_t destroy_mspace(mspace msp) {
   size_t freed = 0;
   mstate_ext me = (mstate_ext)msp;
